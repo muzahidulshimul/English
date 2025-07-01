@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive English Course & Progress Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Warm Professional -->
+    <!-- Application Structure Plan: The app is now a single-page application with two main interactive views: 'Course Plan' and 'Progress Tracker'. This is managed by JS-driven navigation buttons. The 'Progress Tracker' view is split into two columns: a real-time list of employees managed in Firestore, and a detail panel. When an employee is selected, their specific data is fetched and used to populate the interactive scorecard and the skill visualizer chart. All score changes are saved back to Firestore in real-time. This data-driven structure directly addresses the need to track progress for multiple users. -->
+    <!-- Visualization & Content Choices: 
+        - Report Info: List of 20 employees. Goal: Organize, Select. Viz/Method: Dynamic HTML List. Interaction: Click to select an employee. Justification: Provides a clear, real-time roster for the mentor. Library: Vanilla JS + Firestore.
+        - Report Info: Weekly scores per user per category. Goal: Inform, Interact, Update. Viz/Method: Interactive HTML Table Scorecard. Interaction: Clicking scores updates the UI and saves the data to Firestore for the selected user. Justification: A direct-manipulation interface for data entry. Library: Vanilla JS + Firestore.
+        - Report Info: An employee's weekly skill distribution. Goal: Compare, Analyze. Viz/Method: Radar Chart. Interaction: Chart updates automatically when an employee is selected or their scores are changed. Justification: Visualizes the specific strengths and weaknesses of an individual, based on real data. Library: Chart.js.
+    -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 500px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 350px;
+            max-height: 400px;
+        }
+        .nav-btn.active {
+            background-color: #0d9488;
+            color: #ffffff;
+        }
+        .employee-item.active {
+            background-color: #ccfbf1;
+            border-left-color: #0d9488;
+        }
+        .gemini-btn {
+            background-color: #8B5CF6; /* bg-violet-500 */
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 0.375rem;
+            font-weight: 500;
+            transition: background-color 0.3s;
+        }
+        .gemini-btn:hover {
+            background-color: #7C3AED; /* bg-violet-600 */
+        }
+        .gemini-btn:disabled {
+            background-color: #A78BFA; /* bg-violet-400 */
+            cursor: not-allowed;
+        }
+        .modal-backdrop {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .modal-content {
+            background-color: white;
+            padding: 2rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
+            width: 90%;
+            max-width: 500px;
+        }
+    </style>
+</head>
+<body class="bg-stone-50 text-stone-800">
+
+    <main class="container mx-auto p-4 md:p-8">
+
+        <section id="intro" class="text-center mb-12">
+            <h2 class="text-3xl md:text-4xl font-bold mb-4 text-stone-900">English Program Dashboard</h2>
+            <p class="max-w-3xl mx-auto text-stone-600">
+                A dynamic dashboard to manage your 4-week course and track real-time progress for up to 20 employees.
+            </p>
+        </section>
+
+        <div class="flex justify-center border-b border-stone-200 mb-8">
+            <button id="nav-plan" class="nav-btn px-6 py-3 font-medium text-stone-600 active">Course Plan</button>
+            <button id="nav-tracker" class="nav-btn px-6 py-3 font-medium text-stone-600">Progress Tracker</button>
+        </div>
+
+        <!-- View Container -->
+        <div id="view-container">
+            <!-- Views will be injected here by JS -->
+        </div>
+
+    </main>
+    
+    <div id="modal-container"></div>
+
+    <!-- Templates for Views -->
+    <template id="plan-view-template">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-fade-in">
+            <div class="lg:col-span-2 bg-white p-6 rounded-lg shadow-sm">
+                 <div class="flex flex-wrap justify-center border-b border-stone-200 mb-4" id="week-tabs">
+                    <button data-tab="week1" class="tab-btn px-4 py-2 font-medium text-stone-600 hover:bg-teal-50 rounded-t-lg active">Week 1</button>
+                    <button data-tab="week2" class="tab-btn px-4 py-2 font-medium text-stone-600 hover:bg-teal-50 rounded-t-lg">Week 2</button>
+                    <button data-tab="week3" class="tab-btn px-4 py-2 font-medium text-stone-600 hover:bg-teal-50 rounded-t-lg">Week 3</button>
+                    <button data-tab="week4" class="tab-btn px-4 py-2 font-medium text-stone-600 hover:bg-teal-50 rounded-t-lg">Week 4</button>
+                </div>
+                <div id="week-content" class="bg-white rounded-lg">
+                    <!-- Content will be dynamically inserted by JavaScript -->
+                </div>
+            </div>
+            <div class="lg:col-span-1 bg-white p-6 rounded-lg shadow-sm space-y-4">
+                <h3 class="text-xl font-bold text-teal-700">✨ AI Scenario Generator</h3>
+                <div>
+                    <label for="scenarioTopic" class="block font-medium text-gray-700">Scenario Topic</label>
+                    <input type="text" id="scenarioTopic" placeholder="e.g., Angry customer, wrong order" class="w-full p-2 border rounded-md mt-1">
+                </div>
+                <button id="generateScenarioBtn" class="gemini-btn w-full">Generate Role-Play</button>
+                <div id="scenarioResult" class="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200 min-h-[150px]">
+                    <p class="text-gray-500">Your generated scenario will appear here.</p>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <template id="tracker-view-template">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-fade-in">
+            <!-- Employee List Panel -->
+            <div class="lg:col-span-1 bg-white p-6 rounded-lg shadow-sm">
+                <h3 class="text-xl font-bold mb-4 text-teal-700">Employee Roster</h3>
+                <form id="add-employee-form" class="flex gap-2 mb-4">
+                    <input type="text" id="employee-name-input" placeholder="New Employee Name" class="flex-grow p-2 border border-stone-300 rounded-lg focus:ring-teal-500 focus:border-teal-500" required>
+                    <button type="submit" class="bg-teal-600 text-white px-4 rounded-lg hover:bg-teal-700 font-semibold">+</button>
+                </form>
+                <div id="employee-list" class="space-y-2">
+                    <p class="text-stone-500 text-sm">Add employees to begin tracking their progress.</p>
+                </div>
+            </div>
+
+            <!-- Employee Detail Panel -->
+            <div id="employee-detail-view" class="lg:col-span-2 bg-white p-6 rounded-lg shadow-sm">
+                <div class="text-center text-stone-500">
+                    <p>Select an employee from the roster to view and edit their progress.</p>
+                </div>
+            </div>
+        </div>
+    </template>
+    
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, doc, onSnapshot, addDoc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        const courseData = { 'week1': { title: "Week 1: Building the Foundation", focus: "Core grammar rules and establishing a performance baseline.", days: [ { day: "Day 1", topic: "Introduction & The Basics", activity: "\"Introduce Yourself\", write sentences about the job, identify nouns/verbs/adjectives.", mentorNote: "Focus on making students comfortable. Use their job titles in examples. The goal is participation, not perfection.", keyQuestion: "What is one noun and one verb that is important for your specific job?" }, { day: "Day 2", topic: "Sentence Structure & Simple Tenses", activity: "Sentence building, \"What did you do yesterday?\" pair work, tense conversion worksheet.", mentorNote: "Use a whiteboard to visually break down SVO (Subject-Verb-Object). Contrast daily tasks (present) with completed tasks (past).", keyQuestion: "Tell me one thing you did yesterday, and one thing you do every day at work." }, { day: "Day 3", topic: "The Present Continuous & Basic Questions", activity: "Describe a colleague's actions, role-play Q&A about daily tasks.", mentorNote: "Use miming or live actions to demonstrate 'is/are + -ing'. Drill simple yes/no questions to build confidence in asking.", keyQuestion: "What is your colleague doing right now? Ask me a 'yes/no' question about my day." } ] }, 'week2': { title: "Week 2: Expanding the Toolkit", focus: "Adding complexity to sentences and conversations.", days: [ { day: "Day 1", topic: "Future Tenses & Conjunctions", activity: "Discussing weekend plans, combining simple sentences.", mentorNote: "Contrast a planned event ('I am going to meet a client') with a spontaneous decision ('I will send the email now'). Use 'because' and 'so' to show cause and effect.", keyQuestion: "What is one thing you are going to do after work? Why?" }, { day: "Day 2", topic: "Prepositions of Time & Place", activity: "\"Where is the...?\" game, fill-in-the-blanks, describing meeting times/locations.", mentorNote: "Draw the 'pyramid of time': IN (big: month/year), ON (medium: day), AT (small: time). Use office objects for place prepositions.", keyQuestion: "Where is your computer? When is our next meeting?" }, { day: "Day 3", topic: "The Present Perfect Tense", activity: "\"Have you ever...?\" game, discussing work experiences.", mentorNote: "Emphasize the connection to NOW. 'I have finished the report' implies 'so we can discuss it now'. It's about experience, not a specific past time.", keyQuestion: "What is one important task you have finished this week?" } ] }, 'week3': { title: "Week 3: Developing Fluency & Professionalism", focus: "Shifting from being correct to being effective and polite.", days: [ { day: "Day 1", topic: "Modal Verbs for Politeness", activity: "Role-playing polite requests, contrasting \"I want\" with \"Could you please\".", mentorNote: "Role-play is key. Create scenarios where they must politely interrupt, ask for help, or disagree with a suggestion. Frame modals as 'softening' language.", keyQuestion: "How would you politely ask a manager for help when they are busy?" }, { day: "Day 2", topic: "Vocabulary for Customer Interaction", activity: "Create a shared \"word bank\", practice new words in dialogues.", mentorNote: "Create a 'word wall' with words like 'inquiry', 'resolve', 'appreciate', 'inconvenience'. Challenge students to use them in sentences throughout the day.", keyQuestion: "Use the word 'appreciate' in a sentence about a helpful colleague." }, { day: "Day 3", topic: "Pronunciation & Intonation", activity: "Minimal pair drills, reading scripts aloud, mimicking native speaker intonation.", mentorNote: "Record students speaking a short sentence and let them listen to themselves. It's a powerful tool for self-awareness. Focus on sentence stress, not just individual sounds.", keyQuestion: "Say this sentence as a statement, then as a question: 'You finished the project.'" } ] }, 'week4': { title: "Week 4: Real-World Application & Review", focus: "Putting all the skills together in realistic scenarios.", days: [ { day: "Day 1", topic: "Handling Customer Inquiries", activity: "In-depth role-playing with specific customer problems.", mentorNote: "Provide cue cards with prompts, then gradually remove them to build confidence and spontaneity. Focus on the flow: Greet -> Empathize -> Gather Info -> Propose Solution -> Close.", keyQuestion: "What is the first thing you should say when a customer tells you they are angry?" }, { day: "Day 2", topic: "Writing Professional Emails", activity: "Analyze good/bad examples, write a sample email for a customer complaint.", mentorNote: "Use real (anonymized) examples of good and bad emails. Emphasize a clear subject line and a call to action.", keyQuestion: "What are the three most important parts of a professional email?" }, { day: "Day 3", topic: "Final Assessment & Path Forward", activity: "Final comprehensive role-play, 2-minute presentation on learnings.", mentorNote: "Focus on celebrating progress and setting one clear, achievable goal for their continued learning after the course. Make the final session positive and forward-looking.", keyQuestion: "What is the most valuable skill you have learned in this course, and how will you use it?" } ] } };
+        const SKILL_CATEGORIES = ['Grammar & Accuracy', 'Vocabulary Usage', 'Fluency & Coherence', 'Pronunciation & Clarity', 'Task Completion & Effort'];
+        
+        let db, auth, employeesCollectionRef;
+        let activeEmployeeId = null;
+        let progressChart = null;
+
+        const viewContainer = document.getElementById('view-container');
+        const planViewTemplate = document.getElementById('plan-view-template');
+        const trackerViewTemplate = document.getElementById('tracker-view-template');
+        const navPlanBtn = document.getElementById('nav-plan');
+        const navTrackerBtn = document.getElementById('nav-tracker');
+        const modalContainer = document.getElementById('modal-container');
+
+        async function callGemini(prompt) {
+            const apiKey = ""; // Keep this empty
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+            const payload = { contents: [{ role: "user", parts: [{ text: prompt }] }] };
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if (!response.ok) throw new Error(`API call failed: ${response.status}`);
+                const result = await response.json();
+                if (result.candidates && result.candidates[0].content && result.candidates[0].content.parts && result.candidates[0].content.parts.length > 0) {
+                    return result.candidates[0].content.parts[0].text;
+                }
+                return "Sorry, I couldn't generate a response.";
+            } catch (error) {
+                console.error("Gemini API call error:", error);
+                return "An error occurred while contacting the AI.";
+            }
+        }
+
+        function showModal(title, content, onConfirm) {
+            const confirmButtons = onConfirm ? `
+                <div class="flex justify-end gap-4 mt-6">
+                    <button id="modal-cancel" class="px-4 py-2 bg-stone-200 text-stone-800 rounded-lg hover:bg-stone-300">Cancel</button>
+                    <button id="modal-confirm" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">Confirm</button>
+                </div>` : `<div class="flex justify-end mt-6"><button id="modal-close" class="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700">Close</button></div>`;
+            
+            modalContainer.innerHTML = `
+                <div class="modal-backdrop">
+                    <div class="modal-content">
+                        <h3 class="text-xl font-bold text-stone-800 mb-4">${title}</h3>
+                        <div class="text-stone-600">${content}</div>
+                        ${confirmButtons}
+                    </div>
+                </div>`;
+
+            const closeModal = () => modalContainer.innerHTML = '';
+            
+            if (onConfirm) {
+                document.getElementById('modal-confirm').addEventListener('click', () => {
+                    onConfirm();
+                    closeModal();
+                });
+                document.getElementById('modal-cancel').addEventListener('click', closeModal);
+            } else {
+                document.getElementById('modal-close').addEventListener('click', closeModal);
+            }
+        }
+
+        function switchView(viewName) {
+            viewContainer.innerHTML = '';
+            if (viewName === 'plan') {
+                viewContainer.appendChild(planViewTemplate.content.cloneNode(true));
+                navPlanBtn.classList.add('active');
+                navTrackerBtn.classList.remove('active');
+                initPlanView();
+            } else if (viewName === 'tracker') {
+                viewContainer.appendChild(trackerViewTemplate.content.cloneNode(true));
+                navTrackerBtn.classList.add('active');
+                navPlanBtn.classList.remove('active');
+                initTrackerView();
+            }
+        }
+
+        function initPlanView() {
+            const tabsContainer = document.getElementById('week-tabs');
+            const contentContainer = document.getElementById('week-content');
+            
+            const displayWeekContent = (weekId) => {
+                const weekData = courseData[weekId];
+                let html = `<div class="animate-fade-in">
+                                <h4 class="text-xl font-bold mb-1 text-teal-700">${weekData.title}</h4>
+                                <p class="text-stone-600 mb-6">${weekData.focus}</p>
+                                <div class="space-y-4">`;
+                
+                weekData.days.forEach(day => {
+                    html += `<div class="p-4 bg-stone-50 rounded-lg border border-stone-200">
+                                <h5 class="font-bold text-stone-800">${day.day}: ${day.topic}</h5>
+                                <p class="text-sm text-stone-700 mt-2"><strong class="text-stone-800">Activity:</strong> ${day.activity}</p>
+                                <p class="text-sm text-stone-700 mt-2 italic"><strong class="text-teal-800">Mentor's Note:</strong> ${day.mentorNote}</p>
+                                <p class="text-sm text-stone-700 mt-2"><strong class="text-stone-800">Key Question:</strong> "${day.keyQuestion}"</p>
+                            </div>`;
+                });
+
+                html += `</div></div>`;
+                contentContainer.innerHTML = html;
+            };
+            
+            tabsContainer.addEventListener('click', (event) => {
+                if (event.target.tagName === 'BUTTON') {
+                    const tabId = event.target.dataset.tab;
+                    tabsContainer.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+                    event.target.classList.add('active');
+                    displayWeekContent(tabId);
+                }
+            });
+
+            const generateScenarioBtn = document.getElementById('generateScenarioBtn');
+            generateScenarioBtn.addEventListener('click', async () => {
+                const topic = document.getElementById('scenarioTopic').value.trim();
+                if (!topic) return;
+                generateScenarioBtn.disabled = true;
+                generateScenarioBtn.textContent = 'Generating...';
+                const prompt = `Act as an English language teaching assistant. Create a customer service role-play scenario for two students based on this topic: "${topic}". The scenario should include a clear situation, a role for the 'Employee', and a role for the 'Customer' with their specific goals and emotional state. Make it detailed enough for a 5-minute practice session.`;
+                const result = await callGemini(prompt);
+                document.getElementById('scenarioResult').innerHTML = result.replace(/\n/g, '<br>');
+                generateScenarioBtn.disabled = false;
+                generateScenarioBtn.textContent = 'Generate Role-Play';
+            });
+
+            displayWeekContent('week1');
+        }
+
+        function initTrackerView() {
+            const addEmployeeForm = document.getElementById('add-employee-form');
+            const employeeNameInput = document.getElementById('employee-name-input');
+            const employeeListContainer = document.getElementById('employee-list');
+
+            addEmployeeForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const name = employeeNameInput.value.trim();
+                if (name) {
+                    const newEmployee = {
+                        name: name,
+                        scores: {
+                            week1: { 'Grammar & Accuracy': 0, 'Vocabulary Usage': 0, 'Fluency & Coherence': 0, 'Pronunciation & Clarity': 0, 'Task Completion & Effort': 0 },
+                            week2: { 'Grammar & Accuracy': 0, 'Vocabulary Usage': 0, 'Fluency & Coherence': 0, 'Pronunciation & Clarity': 0, 'Task Completion & Effort': 0 },
+                            week3: { 'Grammar & Accuracy': 0, 'Vocabulary Usage': 0, 'Fluency & Coherence': 0, 'Pronunciation & Clarity': 0, 'Task Completion & Effort': 0 },
+                            week4: { 'Grammar & Accuracy': 0, 'Vocabulary Usage': 0, 'Fluency & Coherence': 0, 'Pronunciation & Clarity': 0, 'Task Completion & Effort': 0 },
+                        }
+                    };
+                    try {
+                        await addDoc(employeesCollectionRef, newEmployee);
+                        employeeNameInput.value = '';
+                    } catch (error) {
+                        console.error("Error adding employee: ", error);
+                    }
+                }
+            });
+
+            onSnapshot(employeesCollectionRef, (snapshot) => {
+                if (snapshot.empty) {
+                    employeeListContainer.innerHTML = '<p class="text-stone-500 text-sm">No employees added yet.</p>';
+                    return;
+                }
+                employeeListContainer.innerHTML = '';
+                snapshot.forEach(docSnapshot => {
+                    const employee = { id: docSnapshot.id, ...docSnapshot.data() };
+                    const item = document.createElement('div');
+                    item.className = 'employee-item flex justify-between items-center p-3 rounded-lg cursor-pointer border-l-4 border-transparent hover:bg-teal-50';
+                    if (employee.id === activeEmployeeId) {
+                        item.classList.add('active');
+                    }
+                    item.innerHTML = `<span class="font-medium">${employee.name}</span>
+                                      <button data-id="${employee.id}" data-name="${employee.name}" class="delete-btn text-stone-400 hover:text-red-500 text-xs">✖</button>`;
+                    
+                    item.addEventListener('click', (e) => {
+                        if (e.target.classList.contains('delete-btn')) return;
+                        activeEmployeeId = employee.id;
+                        renderEmployeeDetail(employee);
+                        document.querySelectorAll('.employee-item').forEach(el => el.classList.remove('active'));
+                        item.classList.add('active');
+                    });
+
+                    item.querySelector('.delete-btn').addEventListener('click', (e) => {
+                        const employeeId = e.target.dataset.id;
+                        const employeeName = e.target.dataset.name;
+                        showModal(
+                            `Delete ${employeeName}?`, 
+                            `Are you sure you want to permanently delete ${employeeName}'s progress? This action cannot be undone.`,
+                            async () => {
+                                await deleteDoc(doc(employeesCollectionRef, employeeId));
+                                if (activeEmployeeId === employeeId) {
+                                    document.getElementById('employee-detail-view').innerHTML = '<div class="text-center text-stone-500"><p>Select an employee from the roster to view and edit their progress.</p></div>';
+                                    activeEmployeeId = null;
+                                }
+                            }
+                        );
+                    });
+
+                    employeeListContainer.appendChild(item);
+                });
+            });
+        }
+
+        function renderEmployeeDetail(employee) {
+            const detailContainer = document.getElementById('employee-detail-view');
+            let html = `<h3 class="text-2xl font-bold mb-2 text-stone-900">${employee.name}'s Progress</h3>
+                        <p class="text-stone-500 mb-6">Select a week to view and edit scores.</p>
+                        <div class="flex flex-wrap gap-2 mb-6">`;
+            
+            Object.keys(employee.scores).forEach((weekId, index) => {
+                html += `<button data-week="${weekId}" class="week-score-tab px-4 py-2 text-sm font-medium rounded-lg ${index === 0 ? 'bg-teal-600 text-white' : 'bg-stone-200 text-stone-700'}">${weekId.replace('week', 'Week ')}</button>`;
+            });
+
+            html += `</div><div id="scorecard-container"></div>`;
+            detailContainer.innerHTML = html;
+
+            const renderScorecardForWeek = (weekId) => {
+                const scorecardContainer = document.getElementById('scorecard-container');
+                const weekScores = employee.scores[weekId];
+                let scorecardHtml = `<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div>
+                                            <div class="flex justify-between items-center mb-4">
+                                                <h4 class="text-lg font-semibold text-teal-700">Scorecard</h4>
+                                                <button class="generate-feedback-btn gemini-btn text-xs" data-week="${weekId}" data-name="${employee.name}">✨ Generate Feedback</button>
+                                            </div>
+                                            <div class="space-y-4">`;
+
+                SKILL_CATEGORIES.forEach(skill => {
+                    scorecardHtml += `<div>
+                                        <label class="block text-sm font-medium text-stone-700">${skill}</label>
+                                        <div class="flex items-center gap-4 mt-1">
+                                            <input type="range" min="0" max="5" value="${weekScores[skill]}" data-skill="${skill}" class="score-input w-full">
+                                            <span class="score-value font-bold text-teal-600 w-4 text-center">${weekScores[skill]}</span>
+                                        </div>
+                                      </div>`;
+                });
+
+                scorecardHtml += `</div>
+                                  <div class="mt-4">
+                                      <textarea class="feedback-display w-full p-2 border rounded-md bg-gray-50 h-32" readonly placeholder="AI-generated feedback will appear here..."></textarea>
+                                  </div>
+                                </div>
+                                <div>
+                                    <h4 class="text-lg font-semibold mb-4 text-teal-700">Skill Visualizer</h4>
+                                    <div class="chart-container">
+                                        <canvas id="progressChart"></canvas>
+                                    </div>
+                                </div>
+                            </div>`;
+                scorecardContainer.innerHTML = scorecardHtml;
+                
+                scorecardContainer.querySelectorAll('.score-input').forEach(input => {
+                    input.addEventListener('input', (e) => {
+                        e.target.nextElementSibling.textContent = e.target.value;
+                    });
+                    input.addEventListener('change', async (e) => {
+                        const skill = e.target.dataset.skill;
+                        const value = parseInt(e.target.value, 10);
+                        const employeeDocRef = doc(employeesCollectionRef, employee.id);
+                        const fieldPath = `scores.${weekId}.${skill}`;
+                        await updateDoc(employeeDocRef, { [fieldPath]: value });
+                        
+                        employee.scores[weekId][skill] = value;
+                        const chartData = SKILL_CATEGORIES.map(s => employee.scores[weekId][s]);
+                        createOrUpdateChart(chartData, weekId);
+                    });
+                });
+
+                scorecardContainer.querySelector('.generate-feedback-btn').addEventListener('click', async (e) => {
+                    const btn = e.target;
+                    const week = btn.dataset.week;
+                    const name = btn.dataset.name;
+                    const scores = employee.scores[week];
+                    const feedbackDisplay = scorecardContainer.querySelector('.feedback-display');
+
+                    btn.disabled = true;
+                    btn.textContent = '...';
+                    feedbackDisplay.value = 'Generating feedback, please wait...';
+
+                    let scoreDetails = '';
+                    for (const [skill, score] of Object.entries(scores)) {
+                        scoreDetails += `- ${skill}: ${score}/5\n`;
+                    }
+
+                    const prompt = `Act as an encouraging English mentor. Write a feedback summary for an employee named ${name} for their performance in ${week}. Use the "Sandwich Method" (Positive, Constructive, Encouraging). Base the feedback on these scores:\n${scoreDetails}\nKeep the feedback concise, positive, and actionable. Address the employee directly.`;
+                    const result = await callGemini(prompt);
+                    feedbackDisplay.value = result;
+
+                    btn.disabled = false;
+                    btn.textContent = '✨ Generate Feedback';
+                });
+
+                const chartData = SKILL_CATEGORIES.map(skill => weekScores[skill]);
+                createOrUpdateChart(chartData, weekId);
+            };
+            
+            detailContainer.querySelectorAll('.week-score-tab').forEach(tab => {
+                tab.addEventListener('click', (e) => {
+                    detailContainer.querySelectorAll('.week-score-tab').forEach(t => t.classList.remove('bg-teal-600', 'text-white') & t.classList.add('bg-stone-200', 'text-stone-700'));
+                    e.target.classList.add('bg-teal-600', 'text-white');
+                    e.target.classList.remove('bg-stone-200', 'text-stone-700');
+                    renderScorecardForWeek(e.target.dataset.week);
+                });
+            });
+
+            renderScorecardForWeek('week1');
+        }
+
+        function createOrUpdateChart(data, weekId) {
+            const chartCanvas = document.getElementById('progressChart');
+            if (!chartCanvas) return;
+            const chartCtx = chartCanvas.getContext('2d');
+            
+            if (progressChart) {
+                progressChart.destroy();
+            }
+
+            progressChart = new Chart(chartCtx, {
+                type: 'radar',
+                data: {
+                    labels: SKILL_CATEGORIES.map(s => s.split(' ')[0]),
+                    datasets: [{
+                        label: `Week ${weekId.replace('week', '')} Skills`,
+                        data: data,
+                        fill: true,
+                        backgroundColor: 'rgba(13, 148, 136, 0.2)',
+                        borderColor: 'rgb(13, 148, 136)',
+                        pointBackgroundColor: 'rgb(13, 148, 136)',
+                        pointBorderColor: '#fff',
+                        pointHoverBackgroundColor: '#fff',
+                        pointHoverBorderColor: 'rgb(13, 148, 136)'
+                    }]
+                },
+                options: {
+                    maintainAspectRatio: false,
+                    scales: { r: { angleLines: { color: '#cbd5e1' }, grid: { color: '#e2e8f0' }, pointLabels: { font: { size: 12 }, color: '#334155' }, ticks: { backdropColor: 'rgba(0,0,0,0)', color: '#64748b', stepSize: 1 }, min: 0, max: 5 } },
+                    plugins: { legend: { display: false } }
+                }
+            });
+        }
+
+        async function main() {
+            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+            const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+            const app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+            
+            onAuthStateChanged(auth, user => {
+                if (user) {
+                    const userId = user.uid;
+                    employeesCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/employees`);
+                    switchView('plan');
+                }
+            });
+
+            try {
+                await signInAnonymously(auth);
+            } catch (error) {
+                console.error("Anonymous sign-in failed", error);
+                viewContainer.innerHTML = '<p class="text-red-500 text-center">Could not connect to the database. Please refresh the page.</p>';
+            }
+
+            navPlanBtn.addEventListener('click', () => switchView('plan'));
+            navTrackerBtn.addEventListener('click', () => switchView('tracker'));
+        }
+
+        main();
+    </script>
+</body>
+</html>
